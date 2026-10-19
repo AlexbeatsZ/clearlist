@@ -1,0 +1,74 @@
+{
+  "name": "clearlist",
+  "productName": "Clearlist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "简清 — 离线优先的开源待办与专注工具",
+  "license": "MIT",
+  "author": "Clearlist contributors",
+  "type": "module",
+  "main": "dist-electron/electron/main.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "npm run build:electron && node scripts/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1 --port 5178 --strictPort",
+    "build:electron": "tsc -p tsconfig.electron.json && node scripts/copy-preload.mjs",
+    "build": "npm run check && vite build && npm run build:electron",
+    "check": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "test:desktop": "npm run build && node scripts/smoke-desktop.mjs",
+    "test:portable": "node scripts/smoke-portable.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "screenshots": "node scripts/capture.mjs",
+    "start": "electron .",
+    "dist:win": "npm run build && node scripts/package-windows.mjs"
+  },
+  "build": {
+    "appId": "org.clearlist.desktop",
+    "productName": "Clearlist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "win": {
+      "target": "portable",
+      "signExecutable": false,
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "Clearlist-${version}-Windows-x64.exe"
+    },
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ]
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
+    "lucide-react": "^1.59.0",
+    "prettier": "^3.9.10",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}
