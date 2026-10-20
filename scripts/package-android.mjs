@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile, copyFile, open } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, copyFile, open, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { randomBytes } from 'node:crypto';
@@ -8,6 +8,10 @@ import { randomBytes } from 'node:crypto';
 const root = process.cwd();
 const windows = process.platform === 'win32';
 const debug = process.argv.includes('--debug');
+const unsigned = process.argv.includes('--unsigned');
+const signAt = process.argv.indexOf('--sign-only');
+const signOnly = signAt < 0 ? null : process.argv[signAt + 1];
+if (signAt >= 0 && !signOnly) throw new Error('Provide an unsigned APK after --sign-only.');
 const sdk =
   process.env.ANDROID_HOME ??
   process.env.ANDROID_SDK_ROOT ??
@@ -50,7 +54,7 @@ await writeFile(
   path.join(root, 'android/local.properties'),
   `sdk.dir=${sdk.replace(/\\/g, '/').replace(/:/g, '\\:')}\n`,
 );
-if (!debug) {
+if (!debug && !unsigned) {
   const directory = path.join(root, '.local/android-signing');
   await mkdir(directory, { recursive: true });
   const credentialPath = path.join(directory, 'credentials.json'),
@@ -106,16 +110,45 @@ if (!debug) {
   env.CLEARLIST_KEYSTORE = keystore;
   env.CLEARLIST_KEY_PASSWORD = credentials.password;
 }
-await run(
-  windows ? 'gradlew.bat' : './gradlew',
-  ['--no-daemon', debug ? ':app:assembleDebug' : ':app:assembleRelease', ':app:lintDebug'],
-  path.join(root, 'android'),
-);
+if (!signOnly)
+  await run(
+    windows ? 'gradlew.bat' : './gradlew',
+    ['--no-daemon', debug ? ':app:assembleDebug' : ':app:assembleRelease', ':app:lintDebug'],
+    path.join(root, 'android'),
+  );
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 await mkdir('release', { recursive: true });
-const target = `release/Clearlist-${version}-Android${debug ? '-debug' : ''}.apk`;
-await copyFile(
-  `android/app/build/outputs/apk/${debug ? 'debug/app-debug' : 'release/app-release'}.apk`,
-  target,
-);
+const target = `release/Clearlist-${version}-Android${debug ? '-debug' : unsigned ? '-unsigned' : ''}.apk`;
+if (signOnly) {
+  if (debug || unsigned)
+    throw new Error('--sign-only cannot be combined with --debug or --unsigned.');
+  const versions = (await readdir(path.join(sdk, 'build-tools')))
+    .filter((s) => /^\d+\.\d+\.\d+$/.test(s))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const signer = path.join(
+    sdk,
+    'build-tools',
+    versions.at(-1) ?? '',
+    `apksigner${windows ? '.bat' : ''}`,
+  );
+  await run(signer, [
+    'sign',
+    '--ks',
+    env.CLEARLIST_KEYSTORE,
+    '--ks-key-alias',
+    'clearlist',
+    '--ks-pass',
+    'env:CLEARLIST_KEY_PASSWORD',
+    '--key-pass',
+    'env:CLEARLIST_KEY_PASSWORD',
+    '--out',
+    path.resolve(target),
+    path.resolve(signOnly),
+  ]);
+  await run(signer, ['verify', '--verbose', path.resolve(target)]);
+} else
+  await copyFile(
+    `android/app/build/outputs/apk/${debug ? 'debug/app-debug' : unsigned ? 'release/app-release-unsigned' : 'release/app-release'}.apk`,
+    target,
+  );
 console.log(`Created ${target}. Signing material remains in ignored .local/ only.`);

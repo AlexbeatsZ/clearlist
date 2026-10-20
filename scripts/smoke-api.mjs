@@ -13,8 +13,15 @@ delete env.ELECTRON_RUN_AS_NODE;
 delete env.CLEARLIST_DEV_URL;
 let app;
 try {
-  app = await electron.launch({ args: ['.'], cwd: process.cwd(), env });
-  const page = await app.firstWindow();
+  app = await electron.launch({
+    ...(process.env.CLEARLIST_EXECUTABLE
+      ? { executablePath: path.resolve(process.env.CLEARLIST_EXECUTABLE) }
+      : {}),
+    args: process.env.CLEARLIST_EXECUTABLE ? [] : ['.'],
+    cwd: process.cwd(),
+    env,
+  });
+  let page = await app.firstWindow();
   await expect(page.getByLabel('新任务标题')).toBeVisible();
   await expect
     .poll(() => page.evaluate(async () => (await window.clearlist.apiInfo()).enabled))
@@ -64,6 +71,17 @@ try {
   const disk = JSON.parse(await readFile(path.join(profile, 'data.json'), 'utf8'));
   assert.equal(disk.tasks[0].notes, '界面补充的备注');
   assert.ok(disk.tasks[0].completedAt);
+  if (process.platform === 'darwin') {
+    const closed = page.waitForEvent('close');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await closed;
+    await request('GET', '/health');
+    const reopened = app.waitForEvent('window');
+    await app.evaluate(({ app }) => app.emit('activate'));
+    page = await reopened;
+    await expect(page.getByLabel('新任务标题')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  }
   console.log(
     JSON.stringify({ apiToUi: true, uiToApi: true, concurrentFields: true, persisted: true }),
   );

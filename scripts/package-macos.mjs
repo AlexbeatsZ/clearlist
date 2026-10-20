@@ -14,7 +14,11 @@ const child = spawn(
     '--' + arch,
     '--publish',
     'never',
-    ...(arch === process.arch ? [`--config.electronDist=${path.dirname(electron)}`] : []),
+    ...(arch === process.arch
+      ? [
+          `--config.electronDist=${path.join(path.dirname(require.resolve('electron/package.json')), 'dist')}`,
+        ]
+      : []),
   ],
   { stdio: 'inherit', env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false' } },
 );

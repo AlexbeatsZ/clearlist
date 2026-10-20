@@ -45,11 +45,11 @@ jobs:
           java-version: 21
       - run: npm ci
       - run: npm run android:sync
-      - run: node scripts/package-android.mjs --debug
+      - run: node scripts/package-android.mjs --unsigned
       - uses: actions/upload-artifact@v4
         with:
-          name: Clearlist-Android-debug
-          path: release/Clearlist-*-Android-debug.apk
+          name: Clearlist-Android-unsigned
+          path: release/Clearlist-*-Android-unsigned.apk
   macos:
     strategy:
       fail-fast: false
@@ -57,8 +57,10 @@ jobs:
         include:
           - runner: macos-15
             arch: arm64
+            app-dir: mac-arm64
           - runner: macos-15-intel
             arch: x64
+            app-dir: mac
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +74,9 @@ jobs:
       - run: node scripts/smoke-desktop.mjs
       - run: node scripts/smoke-api.mjs
       - run: node scripts/package-macos.mjs ${{ matrix.arch }}
+      - run: node scripts/smoke-api.mjs
+        env:
+          CLEARLIST_EXECUTABLE: release/${{ matrix.app-dir }}/Clearlist.app/Contents/MacOS/Clearlist
       - uses: actions/upload-artifact@v4
         with:
           name: Clearlist-macOS-${{ matrix.arch }}

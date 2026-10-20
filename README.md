@@ -120,7 +120,7 @@ npm run dist:android
 
 图标由 `scripts/make-icon.mjs` 独立绘制；如需修改并重新生成，运行 `node scripts/make-icon.mjs`。`npm run screenshots` 需要浏览器开发服务运行，截图使用独立浏览器上下文和示例任务。
 
-`dist:mac` 在 Mac 上构建当前架构，`npm run dist:mac -- x64` 可指定 Intel；GitHub Actions 分别在 arm64 和 Intel runner 构建。`dist:android` 需要已有 Android SDK 与 Java 21，可用 `CLEARLIST_JAVA_HOME` 指定项目使用的 Java；脚本优先使用已有 Android Studio JBR。首次发布构建在忽略的 `.local/android-signing/` 生成私钥与密码，务必自行安全备份以支持以后覆盖升级，绝不可提交或公开。CI 仅生成调试 APK，不使用发布私钥。
+`dist:mac` 在 Mac 上构建当前架构，`npm run dist:mac -- x64` 可指定 Intel；GitHub Actions 分别在 arm64 和 Intel runner 构建。`dist:android` 需要已有 Android SDK 与 Java 21，可用 `CLEARLIST_JAVA_HOME` 指定项目使用的 Java；脚本优先使用已有 Android Studio JBR。首次发布构建在忽略的 `.local/android-signing/` 生成私钥与密码，务必自行安全备份以支持以后覆盖升级，绝不可提交或公开。CI 构建未签名 release APK；下载后用 `node scripts/package-android.mjs --sign-only release/Clearlist-0.2.0-Android-unsigned.apk` 在本机签名，不向 CI 上传发布私钥。
 
 ## 数据与恢复
 
