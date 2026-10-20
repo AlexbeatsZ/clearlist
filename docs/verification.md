@@ -10,7 +10,26 @@
 - 手机浏览器触摸检查通过：底部导航、清单创建、全屏任务详情、备注保存、主题记忆、日历、无横向溢出，以及系统外观变化和手动偏好覆盖。
 - 已生成并查看暗色桌面和手机界面截图，控制台无脚本错误。
 
-平台打包、Mac 实机和 GitHub Actions 结果在本次发布完成后补充。Android 当前没有连接的实体设备或现成模拟器镜像，原生构建通过也不代表手机安装、返回键、文件选择器和系统栏已经完成人工验收。所有检查使用临时隔离数据，未读取原 Todo清单或个人任务。
+### 平台构建与运行
+
+[GitHub Actions 39362864928](https://github.com/AlexbeatsZ/clearlist/actions/runs/39362864928) 在同一代码提交 `9e8f010` 上全部通过：Windows、Android、macOS arm64 和 macOS Intel 四个 job 均成功。
+
+| 平台        | 已完成检查                                                                                                                                                                                       | 实际边界                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Windows x64 | 生产构建、30 项测试、7 组浏览器流程、桌面恢复、UI/API/CLI、最终便携 EXE 启动写入关闭；本机和 CI 均通过                                                                                           | 未替代用户长期工作流体验                                             |
+| macOS arm64 | CI 和实体 Mac 的桌面恢复、UI/API/CLI；最终 `.app` 的 API 联动、关闭窗口后 API 继续可用、activate 重开后主题保留；本机 codesign strict/deep 与 DMG 校验通过                                       | 未人工验收浏览器下载后的 Gatekeeper；包仅 ad-hoc 签名、未公证        |
+| macOS Intel | Intel runner 上原生构建、30 项测试、桌面恢复、UI/API/CLI、最终 `.app` 联动与关闭重开，DMG/ZIP 生成并上传                                                                                         | 未在用户实体 Intel Mac 上验收                                        |
+| Android     | Linux CI 编译 release APK、原生 Java 与资源、lint 通过；本机使用稳定私钥签名，apksigner v2/v3 验证通过；包名 `org.clearlist.mobile`、versionCode 2、versionName 0.2.0、min SDK 24、target SDK 36 | 未安装到实体手机，原生返回键、系统栏、文件选择器和后台行为未人工验收 |
+
+实体 Mac 环境为 macOS 26.6.2 / Apple Silicon / Node 26.11.1。所有检查使用临时隔离数据，未读取原 Todo清单或个人任务。Android 当前没有连接的实体设备或现成模拟器镜像。
+
+本机 Windows Gradle 构建曾遇到缓存元数据损坏及临时工作区重命名失败；项目支持独立 Gradle 缓存，最终发布 APK 从上述同源 CI 的未签名 release 构建取得，在本机签名。首轮签名凭据未完整落盘且从未发布，其材料保留在忽略的隔离目录；当前密钥和凭据已配对验证，未来升级须保留 `.local/android-signing/`，不公开上传。
+
+### 公开发布
+
+[v0.2.0](https://github.com/AlexbeatsZ/clearlist/releases/tag/v0.2.0) 已公开发布，非草稿、非预发布，标签指向 `9e8f01050fe77bb26d9aee5e6090085dd955dd5b`。九个附件均为 uploaded，远端文件名与大小逐一匹配本地：Windows EXE、Android APK、Mac 两个架构各自 DMG/ZIP、源码 ZIP、独立 API 客户端与 OpenAPI JSON。源码包使用该标签对应的 Git 文件生成，不包含 `.local/`、签名私钥、个人数据或依赖缓存。
+
+从云端下载的最终 Windows EXE 在本机再次完成启动、创建任务落盘和关闭检查。四个平台安装包、API 文件、截图及中文快速使用说明也已复制到本次任务的 `outputs/` 交付目录。
 
 ## 0.1.0 历史记录
 

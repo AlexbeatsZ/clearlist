@@ -4,17 +4,17 @@ Build 简清 / Clearlist, an independently implemented MIT-licensed alternative 
 
 # Current State
 
-- Version 0.2.0 in preparation, 2026-10-19. Electron + React + TypeScript and Capacitor Android; v1 JSON remains compatible.
+- Version 0.2.0, 2026-10-19. Electron + React + TypeScript and Capacitor Android; v1 JSON remains compatible.
 - Implemented tasks, lists, tags, notes, subtasks, date/priority, repeats, calendar drag, quadrants, focus/rest timers, statistics, trash/restore, JSON merge import/export and light/dark/system themes.
-- 30 domain/storage/API tests, phone touch/theme workflows, desktop persistence and real UI/API round-trip checks passed locally. Release packaging and Mac runtime checks are in progress; physical Android acceptance remains pending.
+- 30 domain/storage/API tests, 7 browser workflows, desktop persistence, UI/API/CLI and final Windows EXE checks passed. Mac arm64/Intel final apps passed on CI, arm64 also on the physical Mac; Android release build/lint/signature passed. Physical Android acceptance remains pending.
 - The original Todo清单 installation, account, databases, assets and services must remain untouched.
 - Reference findings: `docs/design/reference-analysis.md`. No extracted proprietary source/assets may enter this repository.
 - Public repository: `https://github.com/AlexbeatsZ/clearlist`; `origin` uses HTTPS and `main` is the publishing branch. User authorized public GitHub publication on 2026-10-19.
-- Public release: `v0.1.0`, with Windows x64 portable executable and source ZIP. Full Windows GitHub Actions run `39350266827` passed after the test-only first-write timing fix; release tag/history were retained.
+- Public release `v0.2.0` is built from `9e8f010`; all four jobs in GitHub Actions `39362864928` passed. Nine uploaded assets: Windows EXE, Android APK, Mac arm64/Intel DMG+ZIP, source ZIP and AI client/OpenAPI. Remote names/sizes match local files; release is non-draft/non-prerelease. Retain v0.1.0 tag/history.
 
 # Active Work
 
-- Finish v0.2.0 packaging and publish Windows, Android and macOS Apple Silicon/Intel artifacts. Dark/mobile UI and authenticated local REST API are implemented; check CI and real Mac startup before release.
+- v0.2.0 user acceptance: Android installation/native file pickers/back/system bars; Mac downloaded Gatekeeper flow; long-running focus/notification behavior. These are separate from the passed build and automated process checks.
 - Preserve v1 task data and the installed Windows profile. Android uses an independent app-private data directory; transfer via JSON remains explicit.
 - Sync, attachments, iOS packaging and original-app data migration are outside this release.
 
@@ -50,3 +50,4 @@ Build 简清 / Clearlist, an independently implemented MIT-licensed alternative 
 - `docs/api/README.md` / `openapi.json`: AI usage and machine-readable API contract.
 - `docs/verification.md`: checked behavior, environment and unverified release boundaries.
 - `docs/releases/v0.1.0.md`: public first-release notes.
+- `docs/releases/v0.2.0.md`: dark/mobile/macOS/API release and acceptance boundaries.
