@@ -1,8 +1,6 @@
-// An original, code-drawn mark. PNG payloads are valid Windows ICO entries.
+// Original code-drawn artwork; no third-party image assets.
 import { deflateSync } from 'node:zlib';
 import { mkdir, writeFile } from 'node:fs/promises';
-const size = 256;
-const pixels = Buffer.alloc(size * (size * 4 + 1));
 const lines = [
   [54, 76, 68, 90],
   [68, 90, 94, 58],
@@ -20,19 +18,6 @@ const distance = (x, y, a, b, c, d) => {
   );
   return Math.hypot(x - a - t * (c - a), y - b - t * (d - b));
 };
-for (let y = 0; y < size; y++)
-  for (let x = 0; x < size; x++) {
-    const at = y * (size * 4 + 1) + 1 + x * 4;
-    const dx = Math.max(0, 45 - x, x - 210),
-      dy = Math.max(0, 45 - y, y - 210);
-    const inside = Math.hypot(dx, dy) <= 45;
-    const white = lines.some(([a, b, c, d]) => distance(x, y, a, b, c, d) <= 7.5);
-    const rgb = white ? [255, 255, 255] : [50, 101, 89];
-    pixels[at] = rgb[0];
-    pixels[at + 1] = rgb[1];
-    pixels[at + 2] = rgb[2];
-    pixels[at + 3] = inside ? 255 : 0;
-  }
 function crc32(buffer) {
   let crc = 0xffffffff;
   for (const byte of buffer) {
@@ -43,30 +28,65 @@ function crc32(buffer) {
 }
 function chunk(type, data) {
   const name = Buffer.from(type),
-    len = Buffer.alloc(4),
+    length = Buffer.alloc(4),
     crc = Buffer.alloc(4);
-  len.writeUInt32BE(data.length);
+  length.writeUInt32BE(data.length);
   crc.writeUInt32BE(crc32(Buffer.concat([name, data])));
-  return Buffer.concat([len, name, data, crc]);
+  return Buffer.concat([length, name, data, crc]);
 }
-const header = Buffer.alloc(13);
-header.writeUInt32BE(size, 0);
-header.writeUInt32BE(size, 4);
-header[8] = 8;
-header[9] = 6;
-const png = Buffer.concat([
-  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-  chunk('IHDR', header),
-  chunk('IDAT', deflateSync(pixels)),
-  chunk('IEND', Buffer.alloc(0)),
-]);
-const icoHeader = Buffer.alloc(22);
-icoHeader.writeUInt16LE(1, 2);
-icoHeader.writeUInt16LE(1, 4);
-icoHeader.writeUInt16LE(1, 10);
-icoHeader.writeUInt16LE(32, 12);
-icoHeader.writeUInt32LE(png.length, 14);
-icoHeader.writeUInt32LE(22, 18);
+function png(size) {
+  const scale = size / 256,
+    pixels = Buffer.alloc(size * (size * 4 + 1));
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const px = x / scale,
+        py = y / scale,
+        at = y * (size * 4 + 1) + 1 + x * 4;
+      const inside =
+        Math.hypot(Math.max(0, 45 - px, px - 210), Math.max(0, 45 - py, py - 210)) <= 45;
+      const white = lines.some(([a, b, c, d]) => distance(px, py, a, b, c, d) <= 7.5);
+      const rgb = white ? [255, 255, 255] : [50, 101, 89];
+      pixels[at] = rgb[0];
+      pixels[at + 1] = rgb[1];
+      pixels[at + 2] = rgb[2];
+      pixels[at + 3] = inside ? 255 : 0;
+    }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(pixels)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 await mkdir('build', { recursive: true });
-await writeFile('build/icon.ico', Buffer.concat([icoHeader, png]));
-await writeFile('build/icon.png', png);
+const base = png(256),
+  ico = Buffer.alloc(22);
+ico.writeUInt16LE(1, 2);
+ico.writeUInt16LE(1, 4);
+ico.writeUInt16LE(1, 10);
+ico.writeUInt16LE(32, 12);
+ico.writeUInt32LE(base.length, 14);
+ico.writeUInt32LE(22, 18);
+await writeFile('build/icon.ico', Buffer.concat([ico, base]));
+await writeFile('build/icon.png', base);
+const chunks = [
+  ['ic07', 128],
+  ['ic08', 256],
+  ['ic09', 512],
+  ['ic10', 1024],
+].map(([type, size]) => {
+  const data = png(size),
+    header = Buffer.alloc(8);
+  header.write(type);
+  header.writeUInt32BE(data.length + 8, 4);
+  return Buffer.concat([header, data]);
+});
+const icns = Buffer.alloc(8);
+icns.write('icns');
+icns.writeUInt32BE(8 + chunks.reduce((sum, item) => sum + item.length, 0), 4);
+await writeFile('build/icon.icns', Buffer.concat([icns, ...chunks]));

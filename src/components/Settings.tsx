@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   X,
   Download,
@@ -27,6 +27,13 @@ export function Settings({
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [api, setApi] = useState<{ url: string; enabled: boolean } | null>(null);
+  useEffect(() => {
+    void window.clearlist
+      ?.apiInfo?.()
+      .then((info) => setApi({ url: info.url, enabled: info.enabled }))
+      .catch(() => setApi({ url: '', enabled: false }));
+  }, []);
   const update = (patch: Partial<AppState['settings']>) =>
     store.update((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   const receive = (value: unknown) => {
@@ -214,13 +221,63 @@ export function Settings({
               </p>
             )}
           </section>
+          {api && (
+            <section className="settings-section api-settings">
+              <h3>AI 接口</h3>
+              <p className="setting-description">
+                让本机的 AI 工具读取与整理任务。每次修改都会同步显示在清单里。
+              </p>
+              {api.enabled ? (
+                <>
+                  <code>{api.url}</code>
+                  <div className="data-actions">
+                    <button
+                      className="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(api.url);
+                          onMessage('接口地址已复制');
+                        } catch {
+                          setError('复制失败，请从地址栏手动复制');
+                        }
+                      }}
+                    >
+                      复制地址
+                    </button>
+                    <button
+                      className="button"
+                      onClick={async () => {
+                        try {
+                          const info = await window.clearlist!.apiInfo!();
+                          await navigator.clipboard.writeText(info.token);
+                          onMessage('访问令牌已复制');
+                        } catch {
+                          setError('复制令牌失败，请查看用户数据目录的 api.json');
+                        }
+                      }}
+                    >
+                      复制访问令牌
+                    </button>
+                  </div>
+                  <p className="field-hint">
+                    使用 Bearer 令牌，只允许本机访问。接口文档位于项目
+                    docs/api/，支持任务、清单、专注与统计。
+                  </p>
+                </>
+              ) : (
+                <p className="field-hint">
+                  接口未启用。若未主动关闭，请重新打开简清并检查数据目录。
+                </p>
+              )}
+            </section>
+          )}
           <div className="about-block">
             <span className="brand-mark small-brand">
               <Check size={18} strokeWidth={3} />
             </span>
             <div>
               <strong>
-                简清 <span>Clearlist 0.1.0</span>
+                简清 <span>Clearlist 0.2.0</span>
               </strong>
               <p>
                 <ShieldCheck size={12} />

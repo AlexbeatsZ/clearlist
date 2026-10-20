@@ -5,3 +5,8 @@ release/
 test-results/
 playwright-report/
 package-lock.json
+.local/
+android/.gradle/
+android/**/build/
+android/app/src/main/assets/
+android/capacitor-cordova-android-plugins/

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   X,
   Pin,
@@ -32,6 +32,10 @@ export function TaskEditor({
   const [title, setTitle] = useState(task?.title ?? '');
   const [tag, setTag] = useState('');
   const [subtask, setSubtask] = useState('');
+  const titleInput = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (document.activeElement !== titleInput.current) setTitle(task?.title ?? '');
+  }, [task?.title]);
   useEffect(() => {
     setTitle(task?.title ?? '');
     setTag('');
@@ -84,6 +88,7 @@ export function TaskEditor({
             {task.completedAt && <Check size={13} />}
           </button>
           <textarea
+            ref={titleInput}
             className={`detail-title ${task.completedAt ? 'completed-title' : ''}`}
             aria-label="任务标题"
             maxLength={500}
@@ -95,7 +100,7 @@ export function TaskEditor({
               if (e.target.value.trim()) patch({ title: e.target.value });
             }}
             onBlur={() => {
-              if (!title.trim()) setTitle(task.title);
+              setTitle(task.title);
             }}
           />
         </div>

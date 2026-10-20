@@ -33,7 +33,14 @@ try {
   await page.getByRole('button', { name: '关闭设置', exact: true }).click();
   await page.getByRole('button', { name: '专注', exact: true }).click();
   await page.screenshot({ path: 'docs/images/focus-dark.png' });
-  console.log(JSON.stringify({ screenshots: 5, errors }));
+  await page.getByRole('button', { name: '今天', exact: true }).click();
+  await page.screenshot({ path: 'docs/images/today-dark.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '手机今天', exact: true }).click();
+  await page.screenshot({ path: 'docs/images/mobile-dark.png' });
+  await page.getByRole('button', { name: '编辑 把最重要的一件事，留在今天', exact: true }).click();
+  await page.screenshot({ path: 'docs/images/mobile-detail.png' });
+  console.log(JSON.stringify({ screenshots: 8, errors }));
 } finally {
   await browser.close();
 }

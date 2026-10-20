@@ -9,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const base = path.join(os.tmpdir(), '.agents');
 await mkdir(base, { recursive: true });
 const profile = await mkdtemp(path.join(base, 'clearlist-desktop-'));
-const env = { ...process.env, CLEARLIST_DATA_DIR: profile };
+const env = { ...process.env, CLEARLIST_DATA_DIR: profile, CLEARLIST_API_PORT: '0' };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.CLEARLIST_DEV_URL;
 let app;
@@ -53,6 +53,7 @@ try {
   // Exercise the real window close handshake rather than terminating the process.
   const closed = app.waitForEvent('close');
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  if (process.platform === 'darwin') await app.evaluate(({ app }) => app.quit());
   await closed;
   app = undefined;
   let saved = JSON.parse(await readFile(path.join(profile, 'data.json'), 'utf8'));

@@ -1,0 +1,226 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { FileStore } from '../electron/storage';
+import { StateService } from '../electron/state-service';
+import { request as httpRequest } from 'node:http';
+import { startApi } from '../electron/api';
+import { applyDelta, diffState, StateConflict } from '../src/state-delta';
+import { emptyState, newTask, now } from '../src/model';
+
+async function fixture(
+  run: (context: {
+    service: StateService;
+    url: string;
+    token: string;
+    request: (
+      method: string,
+      route: string,
+      body?: unknown,
+      headers?: Record<string, string>,
+    ) => Promise<Response>;
+  }) => Promise<void>,
+) {
+  const base = path.join(os.tmpdir(), '.agents');
+  await mkdir(base, { recursive: true });
+  const directory = await mkdtemp(path.join(base, 'clearlist-api-'));
+  const service = new StateService(new FileStore(directory));
+  const api = await startApi(service, 0);
+  const request = (
+    method: string,
+    route: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+  ) =>
+    fetch(`${api.info.url}${route}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${api.info.token}`,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  try {
+    await run({ service, ...api.info, request });
+  } finally {
+    await api.close();
+    assert.ok(directory.startsWith(base + path.sep));
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+test('API rejects missing authentication, browser origins and forged hosts', async () =>
+  fixture(async ({ url, request, service }) => {
+    assert.equal((await fetch(`${url}/health`)).status, 401);
+    assert.equal(
+      (await request('GET', '/health', undefined, { Origin: 'https://example.com' })).status,
+      403,
+    );
+    const forged = await new Promise<number>((resolve, reject) => {
+      const req = httpRequest(`${url}/health`, { headers: { Host: 'example.com' } }, (res) => {
+        res.resume();
+        resolve(res.statusCode!);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(forged, 403);
+    const health = await request('GET', '/health');
+    assert.equal(health.status, 200);
+    assert.equal(health.headers.get('Access-Control-Allow-Origin'), null);
+    const config = JSON.parse(
+      await readFile(path.join(service.storage.directory, 'api.json'), 'utf8'),
+    );
+    assert.equal(config.url, url);
+  }));
+test('task creation, lookup, pagination, search and strict validation share persisted state', async () =>
+  fixture(async ({ service, request }) => {
+    let response = await request('POST', '/tasks', {
+      title: 'API task',
+      notes: 'searchable',
+      due: '2026-10-26',
+      priority: 1,
+    });
+    assert.equal(response.status, 200);
+    const { data: task } = await response.json();
+    assert.equal((await (await request('GET', `/tasks/${task.id}`)).json()).data.title, 'API task');
+    const list = (await (await request('GET', '/tasks?q=searchable&limit=1')).json()).data;
+    assert.equal(list.total, 1);
+    assert.equal(list.items[0].id, task.id);
+    for (const input of [
+      { title: 'Invalid', due: '2026-02-30' },
+      { title: 'Invalid', listId: 'missing' },
+      { title: 'Invalid', completedAt: now() },
+    ])
+      assert.equal((await request('POST', '/tasks', input)).status, 400);
+    assert.equal((await request('GET', '/tasks?limit=9999')).status, 400);
+    assert.equal((await service.snapshot()).state.tasks.length, 1);
+    assert.equal(
+      JSON.parse(await readFile(service.storage.file, 'utf8')).tasks[0].title,
+      'API task',
+    );
+  }));
+test('ETag protects stale API writes and field deltas merge disjoint UI edits', async () =>
+  fixture(async ({ service, request }) => {
+    const created = await request('POST', '/tasks', { title: 'Original' });
+    const etag = created.headers.get('etag')!;
+    const task = (await created.json()).data;
+    const base = (await service.snapshot()).state;
+    const local = {
+      ...base,
+      tasks: base.tasks.map((t) => ({ ...t, notes: 'UI notes', updatedAt: now() })),
+    };
+    assert.equal(
+      (await request('PATCH', `/tasks/${task.id}`, { title: 'AI title' }, { 'If-Match': etag }))
+        .status,
+      200,
+    );
+    assert.equal(
+      (await request('PATCH', `/tasks/${task.id}`, { priority: 2 }, { 'If-Match': etag })).status,
+      409,
+    );
+    await service.patch(diffState(base, local));
+    const saved = (await service.snapshot()).state.tasks[0];
+    assert.equal(saved.title, 'AI title');
+    assert.equal(saved.notes, 'UI notes');
+    const conflict = { ...base, tasks: [{ ...base.tasks[0], title: 'Conflicting UI title' }] };
+    await assert.rejects(service.patch(diffState(base, conflict)), StateConflict);
+    assert.equal((await service.snapshot()).state.tasks[0].title, 'AI title');
+  }));
+test('completion and reopening are idempotent and preserve recurring task history', async () =>
+  fixture(async ({ request, service }) => {
+    const task = (
+      await (
+        await request('POST', '/tasks', { title: 'Daily', due: '2026-10-19', repeat: 'daily' })
+      ).json()
+    ).data;
+    for (let i = 0; i < 2; i++)
+      assert.equal((await request('POST', `/tasks/${task.id}/complete`)).status, 200);
+    assert.equal((await service.snapshot()).state.tasks.length, 2);
+    await request('POST', `/tasks/${task.id}/reopen`);
+    await request('POST', `/tasks/${task.id}/complete`);
+    assert.equal((await service.snapshot()).state.tasks.length, 2);
+    assert.equal(
+      (await service.snapshot()).state.tasks.find((t) => t.parentId === task.id)?.due,
+      '2026-10-20',
+    );
+  }));
+test('soft deletion and list removal preserve task data and support restoration', async () =>
+  fixture(async ({ request, service }) => {
+    const list = (
+      await (await request('POST', '/lists', { name: 'Research', color: '#326559' })).json()
+    ).data;
+    const task = (
+      await (await request('POST', '/tasks', { title: 'Keep me', listId: list.id })).json()
+    ).data;
+    await request('DELETE', `/tasks/${task.id}`);
+    assert.equal((await request('PATCH', `/tasks/${task.id}`, { notes: 'blocked' })).status, 409);
+    assert.equal((await (await request('GET', '/tasks?view=trash')).json()).data.total, 1);
+    await request('POST', `/tasks/${task.id}/restore`);
+    await request('DELETE', `/lists/${list.id}`);
+    const state = (await service.snapshot()).state;
+    assert.equal(state.tasks[0].listId, 'inbox');
+    assert.equal(state.tasks[0].title, 'Keep me');
+    assert.equal((await request('DELETE', '/lists/inbox')).status, 409);
+  }));
+test('focus actions reject overlapping starts and keep pause/resume/cancel consistent', async () =>
+  fixture(async ({ request, service }) => {
+    assert.equal(
+      (await request('POST', '/focus/start', { minutes: 1, kind: 'focus' })).status,
+      200,
+    );
+    assert.equal((await request('POST', '/focus/start', {})).status, 409);
+    await request('POST', '/focus/pause');
+    assert.equal((await service.snapshot()).state.timer?.endAt, null);
+    await request('POST', '/focus/resume');
+    assert.ok((await service.snapshot()).state.timer?.endAt);
+    await request('POST', '/focus/cancel');
+    assert.equal((await service.snapshot()).state.timer, null);
+    assert.equal((await service.snapshot()).state.sessions.length, 0);
+  }));
+test('JSON import/export excludes credentials and invalid imports do not change data', async () =>
+  fixture(async ({ request, token, service }) => {
+    const incoming = { ...emptyState(), tasks: [newTask('Imported')] };
+    assert.equal((await request('POST', '/import', incoming)).status, 200);
+    assert.equal((await request('POST', '/import', incoming)).status, 200);
+    assert.equal((await request('POST', '/import', { version: 2 })).status, 400);
+    const exported = await (await request('GET', '/export')).text();
+    assert.equal(exported.includes(token), false);
+    assert.equal(JSON.parse(exported).data.tasks.length, 1);
+    assert.equal((await service.snapshot()).state.tasks[0].title, 'Imported');
+    const spec = await (await request('GET', '/openapi.json')).json();
+    assert.equal(spec.openapi, '3.0.3');
+    assert.ok(spec.paths['/tasks']);
+  }));
+test('field delta rejects orphan references and does not mutate its input', () => {
+  const task = newTask('Original');
+  const base = { ...emptyState(), tasks: [task] };
+  const next = { ...base, tasks: [{ ...task, listId: 'missing' }] };
+  assert.throws(() => applyDelta(base, diffState(base, next)));
+  assert.equal(base.tasks[0].listId, 'inbox');
+});
+
+test('failed persistence does not publish a state and a later mutation can recover', async () =>
+  fixture(async ({ service }) => {
+    const original = await service.snapshot();
+    const save = service.storage.save.bind(service.storage);
+    let broadcasts = 0;
+    service.subscribe(() => {
+      broadcasts++;
+    });
+    service.storage.save = async () => {
+      throw new Error('Simulated disk failure');
+    };
+    await assert.rejects(
+      service.mutate((s) => ({ ...s, tasks: [newTask('Unsaved')] })),
+      /disk failure/,
+    );
+    assert.deepEqual(await service.snapshot(), original);
+    assert.equal(broadcasts, 0);
+    service.storage.save = save;
+    await service.mutate((s) => ({ ...s, tasks: [newTask('Saved')] }));
+    assert.equal(broadcasts, 1);
+    assert.equal((await service.snapshot()).state.tasks[0].title, 'Saved');
+  }));

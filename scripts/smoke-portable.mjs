@@ -6,7 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 
-const executable = path.resolve('release/Clearlist-0.1.0-Windows-x64.exe');
+const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+const executable = path.resolve(`release/Clearlist-${version}-Windows-x64.exe`);
 const base = path.join(os.tmpdir(), '.agents');
 await mkdir(base, { recursive: true });
 const temporary = await mkdtemp(path.join(base, 'clearlist-portable-'));

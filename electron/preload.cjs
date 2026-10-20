@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('clearlist', {
+  platform: process.platform,
+  setTheme: (theme) => ipcRenderer.invoke('theme:set', theme),
+  patch: (delta) => ipcRenderer.invoke('store:patch', delta),
+  onState: (callback) => ipcRenderer.on('store:changed', (_event, snapshot) => callback(snapshot)),
+  apiInfo: () => ipcRenderer.invoke('api:info'),
   load: () => ipcRenderer.invoke('store:load'),
   save: (state) => ipcRenderer.invoke('store:save', state),
   exportData: (state) => ipcRenderer.invoke('data:export', state),
@@ -9,3 +14,4 @@ contextBridge.exposeInMainWorld('clearlist', {
   onBeforeClose: (callback) => ipcRenderer.on('window:before-close', () => callback()),
   readyToClose: (success) => ipcRenderer.send('window:ready-close', success),
 });
+ipcRenderer.on('app:open-settings', () => window.dispatchEvent(new Event('clearlist:settings')));

@@ -1,37 +1,64 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, nativeTheme } from 'electron';
 import { readFile, writeFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stateSchema } from '../src/model.js';
 import { FileStore } from './storage.js';
+import { StateService } from './state-service.js';
+import { startApi } from './api.js';
+import { diffState } from '../src/state-delta.js';
 
 app.setName('Clearlist');
-if (process.env.CLEARLIST_DATA_DIR)
-  app.setPath('userData', path.resolve(process.env.CLEARLIST_DATA_DIR));
-else app.setPath('userData', path.join(app.getPath('appData'), 'Clearlist'));
+app.setPath(
+  'userData',
+  process.env.CLEARLIST_DATA_DIR
+    ? path.resolve(process.env.CLEARLIST_DATA_DIR)
+    : path.join(app.getPath('appData'), 'Clearlist'),
+);
 const directory = path.dirname(fileURLToPath(import.meta.url));
+const service = new StateService(new FileStore(app.getPath('userData')));
 let window: BrowserWindow | null = null;
-let allowClose = false;
-let closing = false;
-const storage = new FileStore(app.getPath('userData'));
+let allowClose = false,
+  closing = false,
+  quitting = false;
+let api: Awaited<ReturnType<typeof startApi>> | undefined;
+let apiError = '';
 const locked = app.requestSingleInstanceLock();
 if (!locked) app.quit();
 else {
-  app.on('second-instance', () => {
-    window?.restore();
-    window?.show();
-    window?.focus();
-  });
-  app.whenReady().then(() => {
-    Menu.setApplicationMenu(null);
+  const trusted = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent) => {
+    if (
+      !window ||
+      event.sender !== window.webContents ||
+      event.senderFrame !== window.webContents.mainFrame
+    )
+      throw new Error('无效请求来源');
+  };
+  async function readBackup() {
+    const result = await dialog.showOpenDialog(window!, {
+      title: '选择简清 JSON 备份',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON 备份', extensions: ['json'] }],
+    });
+    if (result.canceled) return null;
+    if ((await stat(result.filePaths[0])).size > 50 * 1024 * 1024)
+      throw new Error('文件超过 50 MB 限制');
+    return stateSchema.parse(JSON.parse(await readFile(result.filePaths[0], 'utf8')));
+  }
+  function createWindow() {
+    allowClose = false;
+    closing = false;
     window = new BrowserWindow({
       width: 1400,
       height: 920,
       minWidth: 900,
       minHeight: 640,
       title: '简清 · Clearlist',
-      backgroundColor: '#f6f8f7',
+      backgroundColor: nativeTheme.shouldUseDarkColors ? '#18221f' : '#fafcfb',
       autoHideMenuBar: true,
+      ...(process.platform === 'darwin'
+        ? { titleBarStyle: 'default' as const, trafficLightPosition: { x: 16, y: 17 } }
+        : {}),
       webPreferences: {
         preload: path.join(directory, 'preload.cjs'),
         contextIsolation: true,
@@ -40,28 +67,99 @@ else {
         spellcheck: false,
       },
     });
-    const trusted = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent) => {
-      if (
-        !window ||
-        event.sender !== window.webContents ||
-        event.senderFrame !== window.webContents.mainFrame
-      )
-        throw new Error('无效请求来源');
-    };
+    window.on('close', (event) => {
+      if (allowClose || window?.webContents.isLoadingMainFrame() || window?.webContents.isCrashed())
+        return;
+      event.preventDefault();
+      if (!closing) {
+        closing = true;
+        window?.webContents.send('window:before-close');
+      }
+    });
+    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    window.webContents.on('will-navigate', (event) => event.preventDefault());
+    if (process.env.CLEARLIST_DEV_URL === 'http://127.0.0.1:5178')
+      void window.loadURL(process.env.CLEARLIST_DEV_URL);
+    else void window.loadFile(path.join(directory, '../../dist/index.html'));
+    window.on('closed', () => {
+      window = null;
+      if (quitting) app.quit();
+    });
+  }
+  app.on('second-instance', () => {
+    if (!window) createWindow();
+    window?.restore();
+    window?.show();
+    window?.focus();
+  });
+  app.on('before-quit', () => {
+    quitting = true;
+  });
+  app.whenReady().then(async () => {
+    try {
+      const snapshot = await service.snapshot();
+      nativeTheme.themeSource = snapshot.state.settings.theme;
+    } catch {
+      /* Keep the recovery screen available. */
+    }
+    if (process.platform === 'darwin')
+      Menu.setApplicationMenu(
+        Menu.buildFromTemplate([
+          {
+            label: 'Clearlist',
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              {
+                label: '设置…',
+                accelerator: 'Cmd+,',
+                click: () => window?.webContents.send('app:open-settings'),
+              },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' },
+            ],
+          },
+          { role: 'editMenu' },
+          { role: 'viewMenu' },
+          { role: 'windowMenu' },
+        ]),
+      );
+    else Menu.setApplicationMenu(null);
     ipcMain.handle('store:load', (event) => {
       trusted(event);
-      return storage.load();
+      return service.snapshot();
     });
-    ipcMain.handle('store:save', (event, data: unknown) => {
+    ipcMain.handle('store:patch', (event, delta) => {
       trusted(event);
-      return storage.save(data);
+      return service.patch(delta);
+    });
+    // Only the legacy compatibility method uses a fresh snapshot; current UI uses field deltas.
+    ipcMain.handle('store:save', async (event, value: unknown) => {
+      trusted(event);
+      const snapshot = await service.snapshot();
+      return service.patch(diffState(snapshot.state, stateSchema.parse(value)));
+    });
+    ipcMain.handle('theme:set', (event, theme: unknown) => {
+      trusted(event);
+      if (theme === 'light' || theme === 'dark' || theme === 'system') {
+        nativeTheme.themeSource = theme;
+        window?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#18221f' : '#fafcfb');
+      }
+    });
+    ipcMain.handle('api:info', (event) => {
+      trusted(event);
+      return api?.info ?? { enabled: false, url: '', token: '', error: apiError };
     });
     ipcMain.handle('data:export', async (event, value: unknown) => {
       trusted(event);
       const data = stateSchema.parse(value);
       const result = await dialog.showSaveDialog(window!, {
         title: '导出简清备份',
-        defaultPath: `Clearlist-${new Date().toISOString().slice(0, 10)}.json`,
+        defaultPath: `Clearlist-${Date.now()}.json`,
         filters: [{ name: 'JSON 备份', extensions: ['json'] }],
       });
       if (result.canceled || !result.filePath) return false;
@@ -71,29 +169,17 @@ else {
       });
       return true;
     });
-    ipcMain.handle('data:import', async (event) => {
+    ipcMain.handle('data:import', (event) => {
       trusted(event);
-      const result = await dialog.showOpenDialog(window!, {
-        title: '导入简清备份',
-        properties: ['openFile'],
-        filters: [{ name: 'JSON 备份', extensions: ['json'] }],
-      });
-      if (result.canceled) return null;
-      if ((await stat(result.filePaths[0])).size > 50 * 1024 * 1024)
-        throw new Error('文件超过 50 MB 限制');
-      return stateSchema.parse(JSON.parse(await readFile(result.filePaths[0], 'utf8')));
+      return readBackup();
     });
     ipcMain.handle('data:restore', async (event) => {
       trusted(event);
-      const result = await dialog.showOpenDialog(window!, {
-        title: '选择有效的简清备份以恢复',
-        properties: ['openFile'],
-        filters: [{ name: 'JSON 备份', extensions: ['json'] }],
-      });
-      if (result.canceled) return null;
-      if ((await stat(result.filePaths[0])).size > 50 * 1024 * 1024)
-        throw new Error('文件超过 50 MB 限制');
-      return storage.restore(JSON.parse(await readFile(result.filePaths[0], 'utf8')));
+      const data = await readBackup();
+      if (!data) return null;
+      const result = await service.restore(data);
+      await initializeApi();
+      return result;
     });
     ipcMain.handle('notice', (event, title: string, body: string) => {
       trusted(event);
@@ -109,7 +195,7 @@ else {
     ipcMain.on('window:ready-close', async (event, success: unknown) => {
       trusted(event);
       if (!closing) return;
-      await storage.flush();
+      await service.flush();
       if (success !== true) {
         const result = await dialog.showMessageBox(window!, {
           type: 'warning',
@@ -121,30 +207,38 @@ else {
         });
         if (result.response === 0) {
           closing = false;
+          quitting = false;
           return;
         }
       }
       allowClose = true;
       window?.close();
     });
-    window.on('close', (event) => {
-      if (allowClose) return;
-      // A renderer that failed to load has no edits to flush.
-      if (window?.webContents.isLoadingMainFrame() || window?.webContents.isCrashed()) return;
-      event.preventDefault();
-      if (!closing) {
-        closing = true;
-        window?.webContents.send('window:before-close');
-      }
+    service.subscribe((snapshot) => {
+      nativeTheme.themeSource = snapshot.state.settings.theme;
+      window?.webContents.send('store:changed', snapshot);
     });
-    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    window.webContents.on('will-navigate', (event) => event.preventDefault());
-    const devUrl = process.env.CLEARLIST_DEV_URL;
-    if (devUrl === 'http://127.0.0.1:5178') void window.loadURL(devUrl);
-    else void window.loadFile(path.join(directory, '../../dist/index.html'));
-    window.on('closed', () => {
-      window = null;
+    createWindow();
+    await initializeApi();
+    app.on('activate', () => {
+      if (!window) createWindow();
+      else window.show();
     });
   });
-  app.on('window-all-closed', () => app.quit());
+  async function initializeApi() {
+    if (api || process.env.CLEARLIST_API_DISABLE === '1') return;
+    try {
+      const port = Number(process.env.CLEARLIST_API_PORT ?? 49721);
+      if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid API port');
+      api = await startApi(service, port);
+    } catch (error) {
+      apiError = (error as Error).message;
+    }
+  }
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+  app.on('will-quit', () => {
+    void api?.close();
+  });
 }

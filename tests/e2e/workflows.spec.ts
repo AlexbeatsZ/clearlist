@@ -139,7 +139,7 @@ test('all views render without errors; dark theme persists; compact viewport has
     true,
   );
   expect(errors).toEqual([]);
-  await page.getByRole('button', { name: '打开搜索', exact: true }).click();
+  await page.getByRole('button', { name: '手机更多', exact: true }).click();
   await page.getByLabel('搜索任务').fill('#阅读');
   await expect(page.getByTestId('task-row')).toHaveCount(1);
 });

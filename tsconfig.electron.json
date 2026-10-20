@@ -11,5 +11,5 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["electron/**/*.ts", "src/model.ts"]
+  "include": ["electron/**/*.ts", "src/model.ts", "src/state-delta.ts", "src/api-contract.ts"]
 }

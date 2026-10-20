@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { emptyState, mergeImport, now, stateSchema, type AppState, type Task } from './model';
+import { applyDelta, diffState, type StateDelta } from './state-delta';
 
 const key = 'clearlist.v1';
 type Snapshot = {
@@ -19,13 +20,61 @@ let snapshot: Snapshot = {
   path: '',
 };
 const listeners = new Set<() => void>();
+const jobs: Array<{ delta: StateDelta; data: AppState }> = [];
+let authoritative = snapshot.data;
+let authoritativeRevision = '';
+function acceptRemote(result: { state: AppState; revision?: string }) {
+  const revision = result.revision ?? '';
+  const [session, count] = revision.split(':');
+  const [previousSession, previousCount] = authoritativeRevision.split(':');
+  if (session && session === previousSession && Number(count) < Number(previousCount)) return;
+  authoritative = stateSchema.parse(result.state);
+  authoritativeRevision = revision;
+}
 let pending: Promise<void> = Promise.resolve();
-let closeListenerAttached = false;
+let pumping = false,
+  failed = false,
+  closeListenerAttached = false,
+  stateListenerAttached = false;
 function emit(patch: Partial<Snapshot>) {
   snapshot = { ...snapshot, ...patch };
   listeners.forEach((f) => f());
 }
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+function rebased() {
+  return jobs.reduce((state, job) => applyDelta(state, job.delta, false), authoritative);
+}
+function pump() {
+  if (pumping || failed) return pending;
+  pumping = true;
+  pending = (async () => {
+    while (jobs.length) {
+      const job = jobs[0];
+      try {
+        if (window.clearlist?.patch) {
+          const result = await window.clearlist.patch(job.delta);
+          acceptRemote(result);
+        } else {
+          if (window.clearlist) await window.clearlist.save(job.data);
+          else {
+            const previous = localStorage.getItem(key);
+            if (previous) localStorage.setItem(`${key}.backup`, previous);
+            localStorage.setItem(key, JSON.stringify(job.data));
+          }
+          authoritative = job.data;
+        }
+        jobs.shift();
+        emit({ data: rebased(), saving: jobs.length > 0, error: '' });
+      } catch (error) {
+        failed = true;
+        emit({ saving: false, error: `保存失败，请先导出备份：${message(error)}` });
+        break;
+      }
+    }
+    pumping = false;
+  })();
+  return pending;
+}
 
 export const store = {
   async initialize() {
@@ -36,19 +85,32 @@ export const store = {
         window.clearlist!.readyToClose(!snapshot.loaded || !snapshot.error);
       });
     }
+    if (window.clearlist?.onState && !stateListenerAttached) {
+      stateListenerAttached = true;
+      window.clearlist.onState((result) => {
+        try {
+          acceptRemote(result);
+          emit({ data: rebased() });
+        } catch (error) {
+          emit({ error: `其他修改与未保存内容发生冲突：${message(error)}` });
+        }
+      });
+    }
     try {
       if (window.clearlist) {
         const result = await window.clearlist.load();
+        acceptRemote(result);
         emit({
-          data: stateSchema.parse(result.state),
+          data: authoritative,
           loaded: true,
           recovered: result.recovered,
           path: result.path,
+          error: '',
         });
       } else {
         const raw = localStorage.getItem(key);
-        let recovered = false;
-        let data: AppState;
+        let recovered = false,
+          data: AppState;
         try {
           data = raw ? stateSchema.parse(JSON.parse(raw)) : emptyState();
         } catch (error) {
@@ -59,7 +121,8 @@ export const store = {
           localStorage.setItem(key, JSON.stringify(data));
           recovered = true;
         }
-        emit({ data, loaded: true, recovered, path: '当前浏览器 · 本地存储' });
+        authoritative = data;
+        emit({ data, loaded: true, recovered, path: '当前浏览器 · 本地存储', error: '' });
       }
     } catch (error) {
       emit({ error: `无法读取数据：${message(error)}`, loaded: false });
@@ -75,23 +138,24 @@ export const store = {
       emit({ error: `修改未应用：${message(error)}` });
       return;
     }
-    emit({ data, saving: true });
-    pending = pending.then(async () => {
-      try {
-        if (window.clearlist) await window.clearlist.save(data);
-        else {
-          const previous = localStorage.getItem(key);
-          if (previous) localStorage.setItem(`${key}.backup`, previous);
-          localStorage.setItem(key, JSON.stringify(data));
-        }
-        if (snapshot.data === data) emit({ saving: false, error: '' });
-      } catch (error) {
-        emit({ saving: false, error: `保存失败，请先导出备份：${message(error)}` });
-      }
-    });
+    const delta = diffState(snapshot.data, data);
+    jobs.push({ delta, data });
+    emit({ data, saving: !failed });
+    void pump();
   },
   retry() {
-    store.update((state) => ({ ...state }));
+    failed = false;
+    if (jobs.length) {
+      emit({ saving: true });
+      void pump();
+    } else emit({ error: '' });
+  },
+  async reload() {
+    await pending;
+    jobs.splice(0);
+    failed = false;
+    emit({ saving: false });
+    await store.initialize();
   },
   patchTask(id: string, patch: Partial<Task>) {
     store.update((s) => ({
@@ -107,7 +171,7 @@ export const store = {
     );
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Clearlist-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    link.download = `Clearlist-${Date.now()}.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
     return true;
@@ -123,8 +187,16 @@ export const store = {
     if (!window.clearlist) return;
     try {
       const result = await window.clearlist.restoreData();
-      if (result)
-        emit({ ...result, data: stateSchema.parse(result.state), loaded: true, error: '' });
+      if (result) {
+        authoritative = stateSchema.parse(result.state);
+        emit({
+          data: authoritative,
+          recovered: result.recovered,
+          path: result.path,
+          loaded: true,
+          error: '',
+        });
+      }
     } catch {
       emit({ error: '恢复失败：请选择有效的简清 JSON 备份。原文件仍保留。' });
     }

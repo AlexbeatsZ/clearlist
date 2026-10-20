@@ -24,6 +24,8 @@ import {
   Circle,
   PanelLeftClose,
   PanelLeftOpen,
+  Menu,
+  Moon,
 } from 'lucide-react';
 import {
   colors,
@@ -50,6 +52,7 @@ import { Calendar } from './components/Calendar';
 import { Focus } from './components/Focus';
 import { Statistics } from './components/Statistics';
 import { ListModal, Settings } from './components/Settings';
+import { applyTheme } from './theme';
 
 const navigation = [
   { view: 'today', label: '今天', Icon: Sun },
@@ -98,6 +101,7 @@ export function App() {
   const [focusTask, setFocusTask] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const composer = useRef<HTMLInputElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const today = dateKey(new Date(clock));
@@ -122,6 +126,7 @@ export function App() {
     setView(next);
     setQuery('');
     setSelectedId(null);
+    setMobileNavOpen(false);
   };
   const openComposer = () => {
     if (!allowComposer) navigate('today');
@@ -130,6 +135,7 @@ export function App() {
   const focusSearch = () => {
     setSidebarOpen(true);
     setSearchOpen(true);
+    setMobileNavOpen(true);
     setTimeout(() => search.current?.focus(), 0);
   };
 
@@ -138,18 +144,13 @@ export function App() {
     return () => clearInterval(id);
   }, []);
   useEffect(() => {
+    if (!snapshot.loaded) return;
     const media = matchMedia('(prefers-color-scheme: dark)');
-    const apply = () =>
-      (document.documentElement.dataset.theme =
-        data.settings.theme === 'system'
-          ? media.matches
-            ? 'dark'
-            : 'light'
-          : data.settings.theme);
+    const apply = () => applyTheme(data.settings.theme);
     apply();
     media.addEventListener('change', apply);
     return () => media.removeEventListener('change', apply);
-  }, [data.settings.theme]);
+  }, [data.settings.theme, snapshot.loaded]);
   useEffect(() => {
     if (!toast) return;
     const timeout = setTimeout(() => setToast(null), toast.undo ? 9000 : 4500);
@@ -207,6 +208,27 @@ export function App() {
     if (view.startsWith('list:') && !data.lists.some((l) => l.id === view.slice(5))) setView('all');
     if (!data.lists.some((l) => l.id === draftList)) setDraftList('inbox');
   }, [data.lists]);
+  useEffect(() => {
+    const back = (event: Event) => {
+      if (settings) setSettings(false);
+      else if (editingList) setEditingList(null);
+      else if (selectedId) setSelectedId(null);
+      else if (query) {
+        setQuery('');
+        setSearchOpen(false);
+      } else if (mobileNavOpen) setMobileNavOpen(false);
+      else if (view !== 'today') navigate('today');
+      else return;
+      event.preventDefault();
+    };
+    document.addEventListener('clearlist:back', back);
+    return () => document.removeEventListener('clearlist:back', back);
+  });
+  useEffect(() => {
+    const open = () => setSettings(true);
+    document.addEventListener('clearlist:settings', open);
+    return () => document.removeEventListener('clearlist:settings', open);
+  }, []);
 
   const remove = (task: Task) => {
     store.patchTask(task.id, { deletedAt: now() });
@@ -358,8 +380,49 @@ export function App() {
 
   return (
     <div
-      className={`app-shell ${selectedTask ? 'with-detail' : ''} ${sidebarOpen ? '' : 'sidebar-collapsed'}`}
+      className={`app-shell ${selectedTask ? 'with-detail' : ''} ${sidebarOpen ? '' : 'sidebar-collapsed'} ${mobileNavOpen ? 'mobile-menu-open' : ''}`}
     >
+      <header className="mobile-bar">
+        <button
+          className="icon-button"
+          aria-label="打开导航"
+          onClick={() => setMobileNavOpen(true)}
+        >
+          <Menu size={22} />
+        </button>
+        <div>
+          <img src="./icon.svg" alt="" />
+          <strong>简清</strong>
+        </div>
+        <button
+          className="icon-button"
+          aria-label="切换深浅主题"
+          onClick={() =>
+            store.update((s) => ({
+              ...s,
+              settings: {
+                ...s.settings,
+                theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark',
+              },
+            }))
+          }
+        >
+          {data.settings.theme === 'dark' ||
+          (data.settings.theme === 'system' &&
+            matchMedia('(prefers-color-scheme: dark)').matches) ? (
+            <Sun size={21} />
+          ) : (
+            <Moon size={21} />
+          )}
+        </button>
+      </header>
+      {mobileNavOpen && (
+        <button
+          className="mobile-scrim"
+          aria-label="关闭导航"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
       <aside className="sidebar" aria-label="主导航">
         <div className="brand">
           <img src="./icon.svg" alt="" />
@@ -371,7 +434,10 @@ export function App() {
             className="icon-button sidebar-toggle"
             title="收起侧栏"
             aria-label="收起侧栏"
-            onClick={() => setSidebarOpen(false)}
+            onClick={() => {
+              setSidebarOpen(false);
+              setMobileNavOpen(false);
+            }}
           >
             <PanelLeftClose size={16} />
           </button>
@@ -514,7 +580,10 @@ export function App() {
             className="icon-button"
             aria-label="打开设置"
             title="设置"
-            onClick={() => setSettings(true)}
+            onClick={() => {
+              setSettings(true);
+              setMobileNavOpen(false);
+            }}
           >
             <SettingsIcon size={18} />
           </button>
@@ -572,6 +641,7 @@ export function App() {
             <span>{snapshot.error}</span>
             <button onClick={() => store.retry()}>重试保存</button>
             <button onClick={() => setSettings(true)}>导出备份</button>
+            <button onClick={() => void store.reload()}>舍弃未保存并重新读取</button>
           </div>
         )}
         {snapshot.recovered && (
@@ -913,6 +983,35 @@ export function App() {
           </aside>
         )
       )}
+      <nav className="mobile-bottom-nav" aria-label="手机底部导航">
+        {(
+          [
+            { next: 'today', label: '今天', Icon: Sun },
+            { next: 'all', label: '清单', Icon: ListTodo },
+            { next: 'calendar', label: '日历', Icon: CalendarDays },
+            { next: 'focus', label: '专注', Icon: Timer },
+          ] as const
+        ).map(({ next, label, Icon }) => (
+          <button
+            key={next}
+            aria-label={`手机${label}`}
+            aria-current={view === next ? 'page' : undefined}
+            className={view === next ? 'active' : ''}
+            onClick={() => navigate(next)}
+          >
+            <Icon size={21} strokeWidth={1.7} />
+            <span>{label}</span>
+          </button>
+        ))}
+        <button
+          aria-label="手机更多"
+          className={mobileNavOpen ? 'active' : ''}
+          onClick={() => setMobileNavOpen(true)}
+        >
+          <Menu size={21} />
+          <span>更多</span>
+        </button>
+      </nav>
       {settings && <Settings onClose={() => setSettings(false)} onMessage={message} />}
       {editingList && (
         <ListModal

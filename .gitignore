@@ -9,3 +9,10 @@ playwright-report/
 !.env.example
 .DS_Store
 *.log
+.local/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor*.json
+android/capacitor-cordova-android-plugins/

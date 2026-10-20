@@ -2,6 +2,10 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { store } from './store';
 import './styles.css';
+import './mobile.css';
+import { initializeTheme } from './theme';
+import { initializeMobile } from './mobile';
 
+initializeTheme();
 createRoot(document.getElementById('root')!).render(<App />);
-void store.initialize();
+void initializeMobile().then(() => store.initialize());

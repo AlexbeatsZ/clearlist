@@ -24,9 +24,57 @@ jobs:
       - run: npx playwright install chromium
       - run: npm run test:e2e
       - run: node scripts/smoke-desktop.mjs
+      - run: node scripts/smoke-api.mjs
       - run: npm run dist:win
       - run: npm run test:portable
       - uses: actions/upload-artifact@v4
         with:
           name: Clearlist-Windows-x64
           path: release/Clearlist-*-Windows-x64.exe
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run android:sync
+      - run: node scripts/package-android.mjs --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clearlist-Android-debug
+          path: release/Clearlist-*-Android-debug.apk
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: node scripts/smoke-desktop.mjs
+      - run: node scripts/smoke-api.mjs
+      - run: node scripts/package-macos.mjs ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clearlist-macOS-${{ matrix.arch }}
+          path: |
+            release/Clearlist-*-macOS-${{ matrix.arch }}.dmg
+            release/Clearlist-*-macOS-${{ matrix.arch }}.zip
