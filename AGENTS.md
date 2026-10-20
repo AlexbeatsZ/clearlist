@@ -9,11 +9,12 @@ Build 简清 / Clearlist, an independently implemented MIT-licensed alternative 
 - 17 domain/storage tests, 5 browser workflow tests and desktop process checks passed. Windows x64 portable artifact is generated under `release/`; actual user workflow acceptance remains pending.
 - The original Todo清单 installation, account, databases, assets and services must remain untouched.
 - Reference findings: `docs/design/reference-analysis.md`. No extracted proprietary source/assets may enter this repository.
-- No GitHub remote has been configured. Local source is prepared for public release under MIT.
+- Public repository: `https://github.com/AlexbeatsZ/clearlist`; `origin` uses HTTPS and `main` is the publishing branch. User authorized public GitHub publication on 2026-10-19.
 
 # Active Work
 
 - First offline release complete; collect the user's actual workflow feedback before expanding.
+- Publish v0.1.0 with the Windows portable asset and check the first GitHub Actions run.
 - Sync, mobile packages, attachments and original-app data migration are outside the initial release.
 
 # Build / Run / Test

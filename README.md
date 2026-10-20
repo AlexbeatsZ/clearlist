@@ -4,6 +4,8 @@
 
 **Windows 桌面版 + 浏览器界面 · React / TypeScript / Electron · MIT**
 
+[下载 Windows 便携版](https://github.com/AlexbeatsZ/clearlist/releases/latest) · [版本记录](https://github.com/AlexbeatsZ/clearlist/releases) · [反馈问题](https://github.com/AlexbeatsZ/clearlist/issues)
+
 ![简清的今天视图](docs/images/today.png)
 
 ## 现在可以做什么
@@ -34,7 +36,7 @@
 
 ## 运行桌面版
 
-Windows x64 便携包为 `Clearlist-0.1.0-Windows-x64.exe`，无需安装 Node.js。源码自行构建时，产物位于 `release/`。
+在 [GitHub Releases](https://github.com/AlexbeatsZ/clearlist/releases/latest) 下载 `Clearlist-0.1.0-Windows-x64.exe`，无需安装 Node.js。源码自行构建时，产物位于 `release/`。
 
 便携包免安装，但用户数据保存在 `%APPDATA%\Clearlist`，不在 EXE 旁边。首次解压启动可能需要几秒钟。此预览版本尚未代码签名。
 
@@ -45,6 +47,8 @@ Windows x64 便携包为 `Clearlist-0.1.0-Windows-x64.exe`，无需安装 Node.j
 需要 Node.js 24 LTS 和 npm。所有依赖安装在当前项目内。
 
 ```powershell
+git clone https://github.com/AlexbeatsZ/clearlist.git
+cd clearlist
 npm ci
 npm run dev
 ```

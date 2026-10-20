@@ -6,6 +6,14 @@
   "description": "简清 — 离线优先的开源待办与专注工具",
   "license": "MIT",
   "author": "Clearlist contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexbeatsZ/clearlist.git"
+  },
+  "homepage": "https://github.com/AlexbeatsZ/clearlist#readme",
+  "bugs": {
+    "url": "https://github.com/AlexbeatsZ/clearlist/issues"
+  },
   "type": "module",
   "main": "dist-electron/electron/main.js",
   "engines": {
