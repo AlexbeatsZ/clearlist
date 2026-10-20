@@ -13,6 +13,14 @@ const env = { ...process.env, CLEARLIST_DATA_DIR: profile };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.CLEARLIST_DEV_URL;
 let app;
+async function readSavedState() {
+  try {
+    return JSON.parse(await readFile(path.join(profile, 'data.json'), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
 async function launch() {
   app = await electron.launch({
     ...(process.env.CLEARLIST_EXECUTABLE
@@ -39,11 +47,7 @@ try {
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
   await page.getByLabel('新任务标题').fill('桌面持久化检查');
   await page.getByRole('button', { name: '添加任务', exact: true }).click();
-  await expect
-    .poll(
-      async () => JSON.parse(await readFile(path.join(profile, 'data.json'), 'utf8')).tasks.length,
-    )
-    .toBe(1);
+  await expect.poll(async () => (await readSavedState())?.tasks.length).toBe(1);
   await page.getByRole('button', { name: '编辑 桌面持久化检查', exact: true }).click();
   await page.getByLabel('任务备注').fill('关闭窗口前的最后一次编辑');
   // Exercise the real window close handshake rather than terminating the process.
@@ -60,12 +64,7 @@ try {
   await page.getByRole('button', { name: '编辑 桌面持久化检查', exact: true }).click();
   await expect(page.getByLabel('任务备注')).toHaveValue('关闭窗口前的最后一次编辑');
   await page.getByLabel('任务备注').fill('生成新备份');
-  await expect
-    .poll(
-      async () =>
-        JSON.parse(await readFile(path.join(profile, 'data.json'), 'utf8')).tasks[0].notes,
-    )
-    .toBe('生成新备份');
+  await expect.poll(async () => (await readSavedState())?.tasks[0]?.notes).toBe('生成新备份');
   await app.close();
   app = undefined;
   await writeFile(path.join(profile, 'data.json'), '{corrupt', 'utf8');

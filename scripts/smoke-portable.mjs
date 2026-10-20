@@ -33,6 +33,14 @@ const exited = new Promise((resolve) =>
   }),
 );
 let browser;
+async function readSavedState() {
+  try {
+    return JSON.parse(await readFile(path.join(profile, 'data.json'), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
 try {
   await expect
     .poll(
@@ -55,10 +63,7 @@ try {
   await page.getByLabel('新任务标题').fill('单文件便携启动检查');
   await page.getByRole('button', { name: '添加任务', exact: true }).click();
   await expect
-    .poll(
-      async () =>
-        JSON.parse(await readFile(path.join(profile, 'data.json'), 'utf8')).tasks[0].title,
-    )
+    .poll(async () => (await readSavedState())?.tasks[0]?.title)
     .toBe('单文件便携启动检查');
   await page.evaluate(() => window.close()).catch(() => {});
   let timeout;

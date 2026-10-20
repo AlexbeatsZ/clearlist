@@ -14,7 +14,7 @@ Build 简清 / Clearlist, an independently implemented MIT-licensed alternative 
 # Active Work
 
 - First offline release complete; collect the user's actual workflow feedback before expanding.
-- Publish v0.1.0 with the Windows portable asset and check the first GitHub Actions run.
+- v0.1.0 is publicly released with Windows portable and source assets. Recheck CI after correcting a first-write timing assumption in the smoke scripts.
 - Sync, mobile packages, attachments and original-app data migration are outside the initial release.
 
 # Build / Run / Test
@@ -34,6 +34,7 @@ Build 简清 / Clearlist, an independently implemented MIT-licensed alternative 
 - `signAndEditExecutable=false` suppresses icon and metadata updates as well as signing. Use `signExecutable=false` for unsigned preview builds with the correct application icon.
 - Browser production dependencies are bundled by Vite; only Zod is needed as a runtime node module in the desktop archive.
 - The default electron-builder 26.15.3 ZIP extraction path repeatedly failed with EPERM on the final directory rename here. `scripts/package-windows.mjs` reuses the project's installed runtime through the supported `electronDist` option, avoiding duplicate extraction. The underlying Windows handle owner was not identified.
+- In Playwright `expect.poll`, a thrown ENOENT ends the check immediately. When waiting for the first asynchronous data-file write, treat only ENOENT as "not ready" and return a sentinel; keep other read/parse failures fatal.
 
 # Docs Index
 
