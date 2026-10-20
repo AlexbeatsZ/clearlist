@@ -3,7 +3,6 @@ package org.clearlist.mobile;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
-import android.net.Uri;
 import android.util.AtomicFile;
 import androidx.activity.result.ActivityResult;
 import androidx.core.view.WindowCompat;
@@ -53,7 +52,10 @@ public class ClearlistFilesPlugin extends Plugin {
             AtomicFile source = new AtomicFile(file(call.getString("name")));
             JSObject result = new JSObject();
             try { result.put("content", text(source.openRead())); }
-            catch (FileNotFoundException missing) { result.put("content", JSONObject.NULL); }
+            catch (FileNotFoundException missing) {
+                if (source.exists()) throw missing;
+                result.put("content", JSONObject.NULL);
+            }
             call.resolve(result);
         } catch (Exception error) { call.reject("Unable to read data", error); }
     }
