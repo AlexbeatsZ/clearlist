@@ -10,11 +10,11 @@ Build 简清 / Clearlist, an independently implemented MIT-licensed alternative 
 - The original Todo清单 installation, account, databases, assets and services must remain untouched.
 - Reference findings: `docs/design/reference-analysis.md`. No extracted proprietary source/assets may enter this repository.
 - Public repository: `https://github.com/AlexbeatsZ/clearlist`; `origin` uses HTTPS and `main` is the publishing branch. User authorized public GitHub publication on 2026-10-19.
+- Public release: `v0.1.0`, with Windows x64 portable executable and source ZIP. Full Windows GitHub Actions run `39350266827` passed after the test-only first-write timing fix; release tag/history were retained.
 
 # Active Work
 
 - First offline release complete; collect the user's actual workflow feedback before expanding.
-- v0.1.0 is publicly released with Windows portable and source assets. Recheck CI after correcting a first-write timing assumption in the smoke scripts.
 - Sync, mobile packages, attachments and original-app data migration are outside the initial release.
 
 # Build / Run / Test
@@ -41,3 +41,4 @@ Build 简清 / Clearlist, an independently implemented MIT-licensed alternative 
 - `docs/design/reference-analysis.md`: version-specific read-only reference findings and feature scope.
 - `docs/design/storage.md`: data model, durable writes, recurrence and timer behavior.
 - `docs/verification.md`: checked behavior, environment and unverified release boundaries.
+- `docs/releases/v0.1.0.md`: public first-release notes.

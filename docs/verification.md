@@ -26,10 +26,16 @@
 - 尚未在另一台实体 Windows 设备上运行；未验证 macOS、Linux、Android 或 iOS 安装包。
 - 专注计时的跨重载由自动化时钟推进验证。真实长时间睡眠、跨系统时间调整和 Windows 通知显示仍待实际使用反馈。
 - 原生导入导出使用 Electron 文件选择器；JSON 的校验与合并、浏览器文件输入和导出内容经过自动检查，原生选择器的人工操作尚未验收。
-- 便携版没有代码签名。GitHub Actions 工作流已提供，但在本地阶段没有创建远端仓库，因此没有云端 CI 运行记录。
+- 便携版没有代码签名。源码与 v0.1.0 已公开发布到 [GitHub](https://github.com/AlexbeatsZ/clearlist)，云端检查记录见 [Actions](https://github.com/AlexbeatsZ/clearlist/actions)。
 - 项目完整开发依赖审计报告 8 个 moderate 项，沿 electron-builder 的下载与日志依赖链传播，根项为 sprintf-js 的格式化拒绝服务通报。本次未强制降级打包工具；生产 Node 依赖审计为 0。这是依赖通报的范围说明，不代表已对整套软件完成安全审计。
 
-## 可重复执行
+## GitHub 首次发布
+
+2026-10-19 创建公开仓库 `AlexbeatsZ/clearlist`，配置 HTTPS `origin` 和 `main` 上游分支，发布 [v0.1.0](https://github.com/AlexbeatsZ/clearlist/releases/tag/v0.1.0) 及 Windows x64 便携程序、源码压缩包。仓库与 Windows 下载链接均通过未登录 HTTP 200 检查。
+
+首个云端运行在桌面测试读取首份数据文件时抛出 ENOENT。`main` 中的 `e8242fb` 已修正测试等待逻辑，仅把文件尚不存在视为未就绪；产品持久化代码未改变。[运行 39350266827](https://github.com/AlexbeatsZ/clearlist/actions/runs/39350266827) 全部通过，覆盖依赖安装、格式、17 项领域与存储测试、生产构建、5 组浏览器工作流、真实桌面进程、便携打包、最终 EXE 检查和构建产物上传。`v0.1.0` 标签保持首版发布提交，未改写已发布历史。
+
+## 本地复现
 
 electron-builder 的默认运行时解压流程在本机连续出现最终目录重命名 EPERM。空闲时同目录移动可成功，具体句柄占用来源未确认；打包脚本改用其支持的 `electronDist` 配置复用项目已准备的 Electron 运行时，绕过重复解压步骤，已构建出带正确图标和版本信息的桌面宿主。
 
