@@ -53,7 +53,8 @@ public class ClearlistFilesPlugin extends Plugin {
             JSObject result = new JSObject();
             try { result.put("content", text(source.openRead())); }
             catch (FileNotFoundException missing) {
-                if (source.exists()) throw missing;
+                File base = source.getBaseFile();
+                if (base.exists() || new File(base.getPath() + ".bak").exists() || !base.getParentFile().canRead()) throw missing;
                 result.put("content", JSONObject.NULL);
             }
             call.resolve(result);
